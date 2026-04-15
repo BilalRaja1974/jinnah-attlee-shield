@@ -27,10 +27,14 @@ const DAY_FMT: Record<number, string> = { 1: '2-ball scramble', 2: 'Fourball', 3
 const DAY_COURSE: Record<number, string> = { 1: 'qdl_south', 2: 'san_lorenzo', 3: 'qdl_laranjal', 4: 'qdl_north' };
 const DAY_LABEL: Record<number, string> = { 1: 'South Course', 2: 'San Lorenzo', 3: 'Laranjal', 4: 'North Course' };
 
-const HISTORY = [
-  { year: 2024, winner: 'Pakistan', venue: 'Belek, Turkey', tied: false },
-  { year: 2025, winner: null, venue: 'Paphos, Cyprus', tied: true },
+// HISTORY is now loaded from the database via /api/completed
+// Seed data for pre-2026 editions loaded once on first run
+const SEED_HISTORY = [
+  { year: 2024, winner: 'Pakistan', venue: 'Belek, Turkey', tied: false, scoreA: 0, scoreB: 0, matches: [] },
+  { year: 2025, winner: null, venue: 'Paphos, Cyprus', tied: true, scoreA: 0, scoreB: 0, matches: [] },
 ];
+interface CompletedTournament { year: number; winner: string | null; tied: boolean; scoreA: number; scoreB: number; venue: string; matches: MatchRecord[]; }
+interface MatchRecord { day: number; labelA: string; labelB: string; result: string; ptsA: number; ptsB: number; }
 
 function calcPH(hi: number, slope: number, cr: number, par: number): number {
   return Math.round(hi * (slope / 113) + (cr - par));
@@ -196,10 +200,15 @@ function TeamBadge({ tid, size = 'sm' }: { tid: string; size?: 'sm' | 'md' }) {
 }
 
 // ── Home ──────────────────────────────────────────────────
-function Home({ setupDone, onSetup, onPlay }: { setupDone: boolean; onSetup: () => void; onPlay: () => void }) {
-  const pWins = HISTORY.filter(r => !r.tied && r.winner === 'Pakistan').length;
-  const eWins = HISTORY.filter(r => !r.tied && r.winner === 'England').length;
-  const ties = HISTORY.filter(r => r.tied).length;
+function Home({ setupDone, activeYear, allYears, completedTournaments, onStartYear, onSwitchYear, onSetup, onPlay }: {
+  setupDone: boolean; activeYear: number | null; allYears: number[];
+  completedTournaments: CompletedTournament[];
+  onStartYear: (y: number) => void; onSwitchYear: (y: number) => void;
+  onSetup: () => void; onPlay: () => void;
+}) {
+  const pWins = completedTournaments.filter(r => !r.tied && r.winner === 'Pakistan').length;
+  const eWins = completedTournaments.filter(r => !r.tied && r.winner === 'England').length;
+  const ties = completedTournaments.filter(r => r.tied).length;
 
   return (
     <div>
@@ -223,39 +232,75 @@ function Home({ setupDone, onSetup, onPlay }: { setupDone: boolean; onSetup: () 
             { tid: null, val: ties, lbl: 'Tied' },
             { tid: 'B', val: eWins, lbl: TNAME.B },
           ].map(({ tid, val, lbl }) => (
-            <div key={lbl} style={{ background: tid ? TBG[tid] : '#f4f4f0', borderRadius: 10, padding: '0.75rem', textAlign: 'center' }}>
-              <div style={{ fontSize: 32, fontWeight: 600, color: tid ? TCOL[tid] : '#888' }}>{val}</div>
-              <div style={{ fontSize: 11, color: tid ? TTXT[tid] : '#888', marginTop: 2 }}>{lbl}</div>
+            <div key={lbl} style={{ background: tid ? TBG[tid as string] : '#f4f4f0', borderRadius: 10, padding: '0.75rem', textAlign: 'center' }}>
+              <div style={{ fontSize: 32, fontWeight: 600, color: tid ? TCOL[tid as string] : '#888' }}>{val}</div>
+              <div style={{ fontSize: 11, color: tid ? TTXT[tid as string] : '#888', marginTop: 2 }}>{lbl}</div>
             </div>
           ))}
         </div>
 
-        <div style={{ fontSize: 11, fontWeight: 600, color: '#aaa', letterSpacing: '0.06em', marginBottom: '0.5rem' }}>PREVIOUS EDITIONS</div>
+        <div style={{ fontSize: 11, fontWeight: 600, color: '#aaa', letterSpacing: '0.06em', marginBottom: '0.5rem' }}>EDITIONS</div>
         <div style={{ borderTop: '1px solid #f0f0ec' }}>
-          {HISTORY.map((r, i) => (
-            <div key={r.year} style={{ display: 'grid', gridTemplateColumns: '48px 1fr auto', gap: 8, alignItems: 'center', padding: '8px 0', borderBottom: i < HISTORY.length - 1 ? '1px solid #f0f0ec' : 'none' }}>
-              <div style={{ fontSize: 14, fontWeight: 500 }}>{r.year}</div>
-              <div style={{ fontSize: 12, color: '#888' }}>{r.venue}</div>
-              <span style={{ fontSize: 11, fontWeight: 500, padding: '2px 8px', borderRadius: 999, background: r.tied ? '#f4f4f0' : r.winner === 'Pakistan' ? TBG.A : TBG.B, color: r.tied ? '#888' : r.winner === 'Pakistan' ? TTXT.A : TTXT.B }}>
-                {r.tied ? 'Tied' : `${r.winner} won`}
-              </span>
+          {completedTournaments.map((r, i) => (
+            <div key={r.year} style={{ padding: '8px 0', borderBottom: i < completedTournaments.length - 1 ? '1px solid #f0f0ec' : 'none' }}>
+              <div style={{ display: 'grid', gridTemplateColumns: '48px 1fr auto', gap: 8, alignItems: 'center', marginBottom: r.matches?.length > 0 ? 4 : 0 }}>
+                <div style={{ fontSize: 14, fontWeight: 500 }}>{r.year}</div>
+                <div style={{ fontSize: 12, color: '#888' }}>{r.venue || '—'}</div>
+                <span style={{ fontSize: 11, fontWeight: 500, padding: '2px 8px', borderRadius: 999,
+                  background: r.tied ? '#f4f4f0' : r.winner === 'Pakistan' ? TBG.A : TBG.B,
+                  color: r.tied ? '#888' : r.winner === 'Pakistan' ? TTXT.A : TTXT.B }}>
+                  {r.tied ? 'Tied' : `${r.winner} won`}
+                  {!r.tied && r.scoreA > 0 ? ` ${r.winner === 'Pakistan' ? r.scoreA : r.scoreB}–${r.winner === 'Pakistan' ? r.scoreB : r.scoreA}` : ''}
+                </span>
+              </div>
+              {r.matches?.length > 0 && (
+                <div style={{ marginLeft: 56, display: 'flex', flexDirection: 'column', gap: 2 }}>
+                  {r.matches.map((m, mi) => (
+                    <div key={mi} style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 11 }}>
+                      <div style={{ flex: 1, color: TCOL.A }}>{m.labelA}</div>
+                      <div style={{ minWidth: 90, textAlign: 'center', color: m.ptsA > m.ptsB ? TTXT.A : m.ptsB > m.ptsA ? TTXT.B : '#888',
+                        background: m.ptsA > m.ptsB ? TBG.A : m.ptsB > m.ptsA ? TBG.B : '#f4f4f0',
+                        padding: '1px 6px', borderRadius: 999 }}>{m.result}</div>
+                      <div style={{ flex: 1, color: TCOL.B, textAlign: 'right' }}>{m.labelB}</div>
+                    </div>
+                  ))}
+                </div>
+              )}
             </div>
           ))}
+          {completedTournaments.length === 0 && (
+            <div style={{ padding: '0.75rem 0', fontSize: 13, color: '#bbb', textAlign: 'center' }}>No completed editions yet</div>
+          )}
         </div>
       </div>
 
-      <div style={{ display: 'flex', gap: 8, marginTop: '0.5rem' }}>
-        {!setupDone
-          ? <Btn label="Set up this year's tournament →" primary full onClick={onSetup} />
-          : <>
-            <Btn label="Play →" primary onClick={onPlay} full />
-            <Btn label="Setup" onClick={onSetup} />
-          </>
-        }
+      {activeYear && setupDone && (
+        <div style={{ display: 'flex', gap: 8, marginBottom: '0.75rem' }}>
+          <Btn label="Play →" primary onClick={onPlay} full />
+          <Btn label="Setup" onClick={onSetup} />
+        </div>
+      )}
+      {activeYear && !setupDone && (
+        <div style={{ marginBottom: '0.75rem' }}>
+          <Btn label={`Set up ${activeYear} tournament →`} primary full onClick={onSetup} />
+        </div>
+      )}
+      <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+        {!allYears.includes(2026) && (
+          <Btn label="Start 2026 tournament →" primary={!activeYear} onClick={() => onStartYear(2026)} />
+        )}
+        {allYears.filter(y => y !== activeYear).map(y => (
+          <Btn key={y} label={`Switch to ${y}`} onClick={() => onSwitchYear(y)} />
+        ))}
+        <Btn label="New tournament year" onClick={() => {
+          const y = parseInt(prompt('Enter tournament year:') || '0');
+          if (y > 2020 && y < 2100) onStartYear(y);
+        }} />
       </div>
     </div>
   );
 }
+
 
 // ── Players setup ─────────────────────────────────────────
 function PlayersStep({ players, setPlayers }: { players: Player[]; setPlayers: (p: Player[]) => void }) {
@@ -549,7 +594,7 @@ function CoursesStep({ courses, setCourses }: { courses: Course[]; setCourses: (
 
 // ── Setup flow ────────────────────────────────────────────
 // ── Setup flow ────────────────────────────────────────────
-function Setup({ onBack, onDone, initPlayers, initCourses, alreadyDone }: { onBack: () => void; onDone: () => void; initPlayers: Player[]; initCourses: Course[]; alreadyDone: boolean }) {
+function Setup({ onBack, year, onDone, initPlayers, initCourses, alreadyDone }: { onBack: () => void; year: number; onDone: () => void; initPlayers: Player[]; initCourses: Course[]; alreadyDone: boolean }) {
   const [step, setStep] = useState<'players' | 'courses'>('players');
   const [players, setPlayers] = useState<Player[]>(initPlayers);
   const [courses, setCourses] = useState<Course[]>(() => {
@@ -566,23 +611,23 @@ function Setup({ onBack, onDone, initPlayers, initCourses, alreadyDone }: { onBa
 
   const savePlayers = async () => {
     setSaving(true); setSaved(false);
-    await fetch('/api/players', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(players) });
+    await fetch('/api/players', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ year, players }) });
     setSaving(false); setSaved(true);
     setTimeout(() => setSaved(false), 2500);
   };
 
   const saveCourses = async () => {
     setSaving(true); setSaved(false);
-    await fetch('/api/courses', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(courses) });
+    await fetch('/api/courses', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ year, courses }) });
     setSaving(false); setSaved(true);
     setTimeout(() => setSaved(false), 2500);
   };
 
   const finish = async () => {
     setSaving(true);
-    await fetch('/api/players', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(players) });
-    await fetch('/api/courses', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(courses) });
-    if (!alreadyDone) await fetch('/api/setup', { method: 'POST' });
+    await fetch('/api/players', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ year, players }) });
+    await fetch('/api/courses', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ year, courses }) });
+    // year already created in app state — no extra setup POST needed
     setSaving(false);
     onDone();
   };
@@ -989,7 +1034,7 @@ function Scorecard({ day, pid, players, course, scores, onBack }: { day: number;
 }
 
 // ── Day view ──────────────────────────────────────────────
-function DayView({ day, players, courses, pairings, setPairings, scores, onSave }: { day: number; players: Player[]; courses: Course[]; pairings: Pairing[]; setPairings: (p: Pairing[]) => void; scores: Record<string, (number | null)[]>; onSave: (key: string, holes: (number | null)[]) => Promise<void> }) {
+function DayView({ day, players, courses, pairings, setPairings, scores, onSave, onSavePairings }: { day: number; players: Player[]; courses: Course[]; pairings: Pairing[]; setPairings: (p: Pairing[]) => void; scores: Record<string, (number | null)[]>; onSave: (key: string, holes: (number | null)[]) => Promise<void>; onSavePairings: (day: number, dm: Pairing[]) => Promise<void> }) {
   const [sub, setSub] = useState<string>('list');
   const [editPairings, setEditPairings] = useState(false);
   const [savingPairings, setSavingPairings] = useState(false);
@@ -1007,7 +1052,7 @@ function DayView({ day, players, courses, pairings, setPairings, scores, onSave 
   const savePairings = async () => {
     setSavingPairings(true);
     const dm = pairings.filter(p => p.day === day);
-    await fetch('/api/pairings', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(dm) });
+    await onSavePairings(day, dm);
     setSavingPairings(false);
     setEditPairings(false);
   };
@@ -1226,7 +1271,104 @@ function Day4Card({ pid, players, course, scores, onSave, onBack }: { pid: strin
   );
 }
 
-function Leaderboard({ players, courses, pairings, scores }: { players: Player[]; courses: Course[]; pairings: Pairing[]; scores: Record<string, (number | null)[]> }) {
+// ── End Tournament ────────────────────────────────────────
+function EndTournamentModal({ year, players, courses, pairings, scores, onClose, onComplete }: {
+  year: number; players: Player[]; courses: Course[]; pairings: Pairing[];
+  scores: Record<string, (number | null)[]>; onClose: () => void; onComplete: () => void;
+}) {
+  const [pwd, setPwd] = useState('');
+  const [venue, setVenue] = useState('');
+  const [submitting, setSubmitting] = useState(false);
+  const [error, setError] = useState('');
+
+  // Calculate final scores
+  const nameOf = (pid: string) => players.find(p => p.id === pid)?.name || '?';
+  const dayPts = (day: number) => {
+    let a = 0, b = 0;
+    const course = courses.find(c => c.day === day)!;
+    pairings.filter(m => m.day === day).forEach(m => {
+      const res = getResults(day, m, players, course, scores);
+      const pts = matchPts(matchStat(res));
+      a += pts.A; b += pts.B;
+    });
+    return { A: a, B: b };
+  };
+  const d = { 1: dayPts(1), 2: dayPts(2), 3: dayPts(3) };
+  const totA = d[1].A + d[2].A + d[3].A;
+  const totB = d[1].B + d[2].B + d[3].B;
+  const winner = totA > totB ? 'Pakistan' : totB > totA ? 'England' : null;
+  const tied = totA === totB;
+
+  // Build match records
+  const matchRecords: MatchRecord[] = [];
+  [1, 2, 3].forEach(day => {
+    const course = courses.find(c => c.day === day)!;
+    pairings.filter(m => m.day === day).forEach(m => {
+      const paired = day < 3 ? !!(m.teamA?.[0] && m.teamB?.[0]) : !!(m.playerA && m.playerB);
+      if (!paired) return;
+      const res = getResults(day, m, players, course, scores);
+      const s = matchStat(res);
+      const pts = matchPts(s);
+      const lA = day < 3 ? `${nameOf(m.teamA[0])} & ${nameOf(m.teamA[1])}` : nameOf(m.playerA);
+      const lB = day < 3 ? `${nameOf(m.teamB[0])} & ${nameOf(m.teamB[1])}` : nameOf(m.playerB);
+      matchRecords.push({ day, labelA: lA, labelB: lB, result: s.pl === 0 ? '—' : statLabel(s), ptsA: pts.A, ptsB: pts.B });
+    });
+  });
+
+  const submit = async () => {
+    if (!venue.trim()) { setError('Please enter the venue'); return; }
+    setSubmitting(true); setError('');
+    const res = await fetch('/api/end-tournament', { method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ password: pwd, year, winner, tied, scoreA: totA, scoreB: totB, venue: venue.trim(), matches: matchRecords }) });
+    const data = await res.json();
+    if (!res.ok) { setError(data.error || 'Failed'); setSubmitting(false); return; }
+    setSubmitting(false);
+    onComplete();
+  };
+
+  return (
+    <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.5)', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '1rem', zIndex: 100 }}>
+      <div style={{ background: '#fff', borderRadius: 16, padding: '1.5rem', width: '100%', maxWidth: 420 }}>
+        <div style={{ fontSize: 16, fontWeight: 600, marginBottom: 4 }}>End tournament — {year}</div>
+        <div style={{ fontSize: 13, color: '#888', marginBottom: '1.25rem' }}>This permanently saves all results to the history. This action cannot be undone.</div>
+
+        <div style={{ ...S.card, marginBottom: '1rem', textAlign: 'center', background: tied ? '#f4f4f0' : winner === 'Pakistan' ? TBG.A : TBG.B, border: 'none' }}>
+          <div style={{ fontSize: 11, color: '#aaa', marginBottom: 6 }}>FINAL RESULT</div>
+          <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'baseline', gap: 12 }}>
+            <div style={{ textAlign: 'center' }}>
+              <div style={{ fontSize: 11, color: TCOL.A }}>{TNAME.A}</div>
+              <div style={{ fontSize: 36, fontWeight: 600, color: TCOL.A }}>{fmtPt(totA)}</div>
+            </div>
+            <div style={{ fontSize: 18, color: '#ccc' }}>–</div>
+            <div style={{ textAlign: 'center' }}>
+              <div style={{ fontSize: 11, color: TCOL.B }}>{TNAME.B}</div>
+              <div style={{ fontSize: 36, fontWeight: 600, color: TCOL.B }}>{fmtPt(totB)}</div>
+            </div>
+          </div>
+          <div style={{ fontSize: 14, fontWeight: 500, marginTop: 4, color: tied ? '#888' : winner === 'Pakistan' ? TTXT.A : TTXT.B }}>
+            {tied ? 'Match tied' : `${winner} win`}
+          </div>
+        </div>
+
+        <div style={{ marginBottom: 10 }}>
+          <label style={S.lbl}>Venue (city, country)</label>
+          <input style={S.inp} value={venue} placeholder="e.g. Quinta do Lago, Portugal" onChange={e => setVenue(e.target.value)} />
+        </div>
+        <div style={{ marginBottom: '1.25rem' }}>
+          <label style={S.lbl}>Admin password</label>
+          <input style={S.inp} type="password" value={pwd} placeholder="Enter password" onChange={e => setPwd(e.target.value)} />
+        </div>
+        {error && <div style={{ fontSize: 12, color: '#c0392b', marginBottom: 10, background: '#fff1f0', padding: '6px 10px', borderRadius: 8 }}>{error}</div>}
+        <div style={{ display: 'flex', gap: 8 }}>
+          <Btn label="Cancel" onClick={onClose} />
+          <Btn label={submitting ? 'Saving…' : 'Confirm & save to history →'} primary onClick={submit} disabled={submitting} />
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function Leaderboard({ players, courses, pairings, scores, onEndTournament }: { players: Player[]; courses: Course[]; pairings: Pairing[]; scores: Record<string, (number | null)[]>; onEndTournament: () => void }) {
   const nameOf = (pid: string) => players.find(p => p.id === pid)?.name || '?';
   const dayPts = (day: number) => {
     let a = 0, b = 0;
@@ -1303,6 +1445,11 @@ function Leaderboard({ players, courses, pairings, scores }: { players: Player[]
           </div>
         );
       })}
+      <div style={{ marginTop: '1.5rem', paddingTop: '1rem', borderTop: '1px solid #f0f0ec' }}>
+        <button onClick={onEndTournament} style={{ width: '100%', padding: '10px', borderRadius: 10, border: '1px solid #ffc9c9', background: '#fff1f0', color: '#c0392b', fontSize: 13, cursor: 'pointer', fontWeight: 500 }}>
+          End tournament & save to history
+        </button>
+      </div>
     </div>
   );
 }
@@ -1311,6 +1458,10 @@ function Leaderboard({ players, courses, pairings, scores }: { players: Player[]
 export default function App() {
   const [ready, setReady] = useState(false);
   const [loadError, setLoadError] = useState<string | null>(null);
+  const [activeYear, setActiveYear] = useState<number | null>(null);
+  const [completedTournaments, setCompletedTournaments] = useState<CompletedTournament[]>([]);
+  const [showEndModal, setShowEndModal] = useState(false);
+  const [allYears, setAllYears] = useState<number[]>([]);
   const [setupDone, setSetupDone] = useState(false);
   const [players, setPlayers] = useState<Player[]>([]);
   const [courses, setCourses] = useState<Course[]>([]);
@@ -1318,66 +1469,135 @@ export default function App() {
   const [scores, setScores] = useState<Record<string, (number | null)[]>>({});
   const [nav, setNav] = useState<string>('home');
 
-  const loadAll = useCallback(async () => {
+  const fetchJson = async (url: string) => {
+    const r = await fetch(url);
+    if (!r.ok) throw new Error(`${url} returned ${r.status}: ${await r.text()}`);
+    return r.json();
+  };
+
+  // Load tournament index (which years exist, which is active)
+  const loadIndex = useCallback(async () => {
     setLoadError(null);
     try {
-      const fetchJson = async (url: string) => {
-        const r = await fetch(url);
-        if (!r.ok) throw new Error(`${url} returned ${r.status}: ${await r.text()}`);
-        return r.json();
-      };
-      const [setupRes, playersRes, coursesRes, pairingsRes, scoresRes] = await Promise.all([
+      const [res, completed] = await Promise.all([
         fetchJson('/api/setup'),
-        fetchJson('/api/players'),
-        fetchJson('/api/courses'),
-        fetchJson('/api/pairings'),
-        fetchJson('/api/scores'),
+        fetchJson('/api/completed'),
       ]);
-      setSetupDone(setupRes.done);
+      // Merge seed history with db results (db takes precedence)
+      const dbYears = new Set((completed as CompletedTournament[]).map(r => r.year));
+      const merged = [
+        ...SEED_HISTORY.filter(s => !dbYears.has(s.year)),
+        ...(completed as CompletedTournament[])
+      ].sort((a, b) => b.year - a.year);
+      setCompletedTournaments(merged);
+      setAllYears(res.years || []);
+      if (res.activeYear) {
+        setActiveYear(res.activeYear);
+        await loadYear(res.activeYear);
+      } else {
+        setReady(true);
+      }
+    } catch (e: unknown) {
+      setLoadError(e instanceof Error ? e.message : String(e));
+    }
+  }, []);
+
+  const loadYear = async (year: number) => {
+    setLoadError(null);
+    try {
+      const [playersRes, coursesRes, pairingsRes, scoresRes] = await Promise.all([
+        fetchJson(`/api/players?year=${year}`),
+        fetchJson(`/api/courses?year=${year}`),
+        fetchJson(`/api/pairings?year=${year}`),
+        fetchJson(`/api/scores?year=${year}`),
+      ]);
       setPlayers(playersRes);
       setCourses(coursesRes);
       setPairings(pairingsRes);
       setScores(scoresRes);
+      setSetupDone(playersRes.some((p: Player) => p.name !== ''));
       setReady(true);
     } catch (e: unknown) {
-      const msg = e instanceof Error ? e.message : String(e);
-      setLoadError(msg);
+      setLoadError(e instanceof Error ? e.message : String(e));
     }
-  }, []);
+  };
 
-  useEffect(() => { loadAll(); }, [loadAll]);
+  const startYear = async (year: number) => {
+    setReady(false);
+    await fetch('/api/setup', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ year }) });
+    setActiveYear(year);
+    setAllYears(prev => prev.includes(year) ? prev : [...prev, year].sort((a,b) => b-a));
+    await loadYear(year);
+    setNav('setup');
+  };
+
+  const switchYear = async (year: number) => {
+    setReady(false);
+    await fetch('/api/setup', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ year }) });
+    setActiveYear(year);
+    await loadYear(year);
+    setNav('home');
+  };
+
+  useEffect(() => { loadIndex(); }, [loadIndex]);
 
   const saveScore = async (key: string, holes: (number | null)[]) => {
-    await fetch('/api/scores', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ key, holes }) });
+    if (!activeYear) return;
+    await fetch('/api/scores', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ year: activeYear, key, holes }) });
     setScores(prev => ({ ...prev, [key]: holes }));
+  };
+
+  const handleEndComplete = async () => {
+    setShowEndModal(false);
+    // Reload completed tournaments to update history
+    const completed = await fetchJson('/api/completed');
+    const dbYears = new Set((completed as CompletedTournament[]).map((r: CompletedTournament) => r.year));
+    const merged = [
+      ...SEED_HISTORY.filter(s => !dbYears.has(s.year)),
+      ...(completed as CompletedTournament[])
+    ].sort((a: CompletedTournament, b: CompletedTournament) => b.year - a.year);
+    setCompletedTournaments(merged);
+    setNav('home');
+  };
+
+  const savePairings = async (day: number, dm: Pairing[]) => {
+    if (!activeYear) return;
+    await fetch('/api/pairings', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ year: activeYear, pairings: dm }) });
+  };
+
+  const reloadData = async () => {
+    if (activeYear) { setSetupDone(true); await loadYear(activeYear); }
   };
 
   if (loadError) return (
     <div style={{ maxWidth: 680, margin: '0 auto', padding: '2rem 1rem' }}>
       <div style={{ background: '#fff1f0', border: '1px solid #ffc9c9', borderRadius: 12, padding: '1.25rem' }}>
-        <div style={{ fontSize: 15, fontWeight: 500, color: '#c0392b', marginBottom: 8 }}>Failed to load app</div>
+        <div style={{ fontSize: 15, fontWeight: 500, color: '#c0392b', marginBottom: 8 }}>Failed to load</div>
         <div style={{ fontSize: 12, color: '#888', fontFamily: 'monospace', background: '#f8f8f6', padding: '0.75rem', borderRadius: 8, marginBottom: '1rem', wordBreak: 'break-all', whiteSpace: 'pre-wrap' }}>{loadError}</div>
-        <button onClick={loadAll} style={{ padding: '8px 18px', borderRadius: 999, background: '#111', color: '#fff', border: 'none', fontSize: 13, cursor: 'pointer' }}>Retry</button>
+        <button onClick={loadIndex} style={{ padding: '8px 18px', borderRadius: 999, background: '#111', color: '#fff', border: 'none', fontSize: 13, cursor: 'pointer' }}>Retry</button>
       </div>
     </div>
   );
 
-  if (!ready) return (
-    <div style={{ maxWidth: 680, margin: '0 auto', padding: '0 1rem' }}>
-      <Spinner />
-    </div>
-  );
+  if (!ready) return <div style={{ maxWidth: 680, margin: '0 auto', padding: '0 1rem' }}><Spinner /></div>;
 
   const navItems = [
     { k: 'home', l: 'Home' },
-    ...(setupDone ? [{ k: 'day1', l: 'Day 1' }, { k: 'day2', l: 'Day 2' }, { k: 'day3', l: 'Day 3' }, { k: 'day4', l: 'Day 4' }, { k: 'scores', l: 'Scores' }] : []),
+    ...(setupDone && activeYear ? [
+      { k: 'day1', l: 'Day 1' }, { k: 'day2', l: 'Day 2' },
+      { k: 'day3', l: 'Day 3' }, { k: 'day4', l: 'Day 4' },
+      { k: 'scores', l: 'Scores' }
+    ] : []),
   ];
 
   return (
     <div style={{ maxWidth: 680, margin: '0 auto', padding: '0 1rem 5rem' }}>
       <div style={{ position: 'sticky', top: 0, background: 'rgba(248,248,246,0.95)', backdropFilter: 'blur(8px)', borderBottom: '1px solid #e8e8e4', marginBottom: '1.25rem', paddingTop: '0.75rem', paddingBottom: '0.75rem', zIndex: 10 }}>
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8 }}>
-          <div style={{ fontSize: 13, fontWeight: 600, color: '#111', flexShrink: 0 }}>Jinnah-Attlee Shield</div>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexShrink: 0 }}>
+            <div style={{ fontSize: 13, fontWeight: 600, color: '#111' }}>Jinnah-Attlee Shield</div>
+            {activeYear && <div style={{ fontSize: 11, background: '#f4f4f0', color: '#888', padding: '2px 7px', borderRadius: 999 }}>{activeYear}</div>}
+          </div>
           <div style={{ display: 'flex', gap: 4, overflowX: 'auto' }}>
             {navItems.map(({ k, l }) => (
               <button key={k} onClick={() => setNav(k)} style={{ padding: '5px 12px', borderRadius: 999, fontSize: 12, cursor: 'pointer', whiteSpace: 'nowrap', border: nav === k ? 'none' : '1px solid #d0d0cc', background: nav === k ? '#111' : 'transparent', color: nav === k ? '#fff' : '#888' }}>{l}</button>
@@ -1386,13 +1606,15 @@ export default function App() {
         </div>
       </div>
 
-      {nav === 'home' && <Home setupDone={setupDone} onSetup={() => setNav('setup')} onPlay={() => setNav('day1')} />}
-      {nav === 'setup' && <Setup onBack={() => setNav('home')} onDone={() => { setSetupDone(true); loadAll(); setNav(setupDone ? 'home' : 'day1'); }} initPlayers={players} initCourses={courses} alreadyDone={setupDone} />}
-      {nav === 'day1' && setupDone && <DayView day={1} players={players} courses={courses} pairings={pairings} setPairings={setPairings} scores={scores} onSave={saveScore} />}
-      {nav === 'day2' && setupDone && <DayView day={2} players={players} courses={courses} pairings={pairings} setPairings={setPairings} scores={scores} onSave={saveScore} />}
-      {nav === 'day3' && setupDone && <DayView day={3} players={players} courses={courses} pairings={pairings} setPairings={setPairings} scores={scores} onSave={saveScore} />}
+      {nav === 'home' && <Home setupDone={setupDone} activeYear={activeYear} allYears={allYears} completedTournaments={completedTournaments} onStartYear={startYear} onSwitchYear={switchYear} onSetup={() => setNav('setup')} onPlay={() => setNav('day1')} />}
+      {nav === 'setup' && activeYear && <Setup onBack={() => setNav('home')} year={activeYear} onDone={reloadData} initPlayers={players} initCourses={courses} alreadyDone={setupDone} />}
+      {nav === 'day1' && setupDone && <DayView day={1} players={players} courses={courses} pairings={pairings} setPairings={setPairings} scores={scores} onSave={saveScore} onSavePairings={savePairings} />}
+      {nav === 'day2' && setupDone && <DayView day={2} players={players} courses={courses} pairings={pairings} setPairings={setPairings} scores={scores} onSave={saveScore} onSavePairings={savePairings} />}
+      {nav === 'day3' && setupDone && <DayView day={3} players={players} courses={courses} pairings={pairings} setPairings={setPairings} scores={scores} onSave={saveScore} onSavePairings={savePairings} />}
       {nav === 'day4' && setupDone && <Day4View players={players} courses={courses} scores={scores} onSave={saveScore} />}
-      {nav === 'scores' && setupDone && <Leaderboard players={players} courses={courses} pairings={pairings} scores={scores} />}
+      {nav === 'scores' && setupDone && <Leaderboard players={players} courses={courses} pairings={pairings} scores={scores} onEndTournament={() => setShowEndModal(true)} />}
+      {showEndModal && activeYear && <EndTournamentModal year={activeYear} players={players} courses={courses} pairings={pairings} scores={scores} onClose={() => setShowEndModal(false)} onComplete={handleEndComplete} />}
     </div>
   );
 }
+
