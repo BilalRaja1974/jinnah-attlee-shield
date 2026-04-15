@@ -2,7 +2,7 @@ import { sql } from '@vercel/postgres';
 
 export async function initDB() {
   await sql`CREATE TABLE IF NOT EXISTS players (id TEXT PRIMARY KEY, name TEXT NOT NULL DEFAULT '', team_id TEXT NOT NULL, hi NUMERIC)`;
-  await sql`CREATE TABLE IF NOT EXISTS courses (day INTEGER PRIMARY KEY, name TEXT NOT NULL DEFAULT '', tees TEXT NOT NULL DEFAULT '', slope INTEGER NOT NULL DEFAULT 113, cr NUMERIC, par INTEGER NOT NULL DEFAULT 72, holes JSONB NOT NULL DEFAULT '[]')`;
+  await sql`CREATE TABLE IF NOT EXISTS courses (day INTEGER PRIMARY KEY, name TEXT NOT NULL DEFAULT '', active_tee TEXT NOT NULL DEFAULT '', tee_options JSONB NOT NULL DEFAULT '[]')`;
   await sql`CREATE TABLE IF NOT EXISTS pairings (id TEXT PRIMARY KEY, day INTEGER NOT NULL, match_index INTEGER NOT NULL, team_a TEXT[] DEFAULT '{}', team_b TEXT[] DEFAULT '{}', player_a TEXT DEFAULT '', player_b TEXT DEFAULT '')`;
   await sql`CREATE TABLE IF NOT EXISTS scores (score_key TEXT PRIMARY KEY, holes JSONB NOT NULL DEFAULT '[]')`;
   await sql`CREATE TABLE IF NOT EXISTS setup (key TEXT PRIMARY KEY, value TEXT NOT NULL)`;
@@ -14,8 +14,7 @@ export async function initDB() {
   }
   const { rows: cr } = await sql`SELECT COUNT(*) as c FROM courses`;
   if (parseInt(cr[0].c) === 0) {
-    const h = JSON.stringify(Array.from({length:18},(_,i)=>({hole:i+1,par:[4,4,3,4,5,3,4,4,4,4,4,3,4,5,3,4,4,5][i],si:i+1})));
-    for (const d of [1,2,3]) await sql`INSERT INTO courses (day,name,tees,slope,cr,par,holes) VALUES (${d},'','',113,NULL,72,${h}::jsonb) ON CONFLICT DO NOTHING`;
+    for (const d of [1,2,3,4]) await sql`INSERT INTO courses (day,name,active_tee,tee_options) VALUES (${d},'','','[]'::jsonb) ON CONFLICT DO NOTHING`;
   }
   const { rows: mr } = await sql`SELECT COUNT(*) as c FROM pairings`;
   if (parseInt(mr[0].c) === 0) {
