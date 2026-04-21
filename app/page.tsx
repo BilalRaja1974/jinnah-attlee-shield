@@ -422,13 +422,13 @@ function Today({day,players,courses,pairings,scores,onSelectMatch,onSelectCard}:
                 <div style={{fontSize:13,fontWeight:500,color:C.dark,marginTop:4,textAlign:'right'}}>{lB}</div>
               </div>
             </div>
-            {!paired&&<div style={{fontSize:11,color:C.mid,marginTop:6,textAlign:'center'}}>Pairings not set — go to More → Setup</div>}
+            {!paired&&<div style={{fontSize:11,color:C.mid,marginTop:6,textAlign:'center'}}>Pairings not set — go to More → Set matches</div>}
           </div>
         );
       })}
 
-      {/* Individual scorecards */}
-      {pairedPlayers.length>0&&(
+      {/* Individual scorecards — not shown for Day 1 scramble */}
+      {day>1&&pairedPlayers.length>0&&(
         <div style={{marginTop:'1.25rem'}}>
           <div style={{fontSize:11,fontWeight:700,color:C.mid,letterSpacing:'0.08em',marginBottom:'0.5rem'}}>INDIVIDUAL SCORECARDS</div>
           <div style={{display:'grid',gridTemplateColumns:'repeat(auto-fill,minmax(150px,1fr))',gap:8}}>
@@ -532,7 +532,12 @@ function ScoreEntry({day,matchId,pairings,players,course,scores,onSave,onBack}: 
   const pts=matchPts(s);
   const done=s.closed||s.pl===18;
 
-  const pairLabel=(ri:number)=>rows.length<=2?(ri===0?'A':'B'):(ri<2?`A${ri+1}`:`B${ri-1}`);
+  // Label: PK1/PK2 for Pakistan, EN1/EN2 for England (or PK/EN for singles/scramble)
+  const pairLabel=(ri:number)=>{
+    if(rows.length<=2) return ri===0?'PK':'EN';
+    if(ri===0) return 'PK1'; if(ri===1) return 'PK2';
+    if(ri===2) return 'EN1'; return 'EN2';
+  };
 
   return (
     <div>
@@ -581,6 +586,23 @@ function ScoreEntry({day,matchId,pairings,players,course,scores,onSave,onBack}: 
           <div style={{marginTop:10,paddingTop:10,borderTop:`1px solid ${C.border}`,color:C.mid,fontSize:12}}>Win = 1 pt · Halved = ½ pt each · Loss = 0 pts</div>
         </div>
       )}
+
+      {/* Sticky player name header */}
+      <div style={{position:'sticky',top:56,zIndex:15,background:C.dark,borderRadius:10,padding:'8px 12px',marginBottom:'0.75rem',display:'grid',
+        gridTemplateColumns:`70px 28px 24px ${rows.map(()=>'1fr').join(' ')} 44px 50px`,gap:4,alignItems:'center',boxShadow:'0 2px 8px rgba(0,0,0,0.25)'}}>
+        <div style={{fontSize:10,color:'#6B7280'}}>Player</div>
+        <div style={{fontSize:10,color:'#6B7280',textAlign:'center'}}>Par</div>
+        <div style={{fontSize:10,color:'#6B7280',textAlign:'center'}}>SI</div>
+        {rows.map((row,ri)=>(
+          <div key={ri} style={{textAlign:'center',padding:'0 2px'}}>
+            <div style={{fontSize:11,fontWeight:800,color:TCOL[row.teamId]}}>{pairLabel(ri)}</div>
+            <div style={{fontSize:9,color:'#9CA3AF',lineHeight:1.2,marginTop:1}}>{row.label.split(' ')[0]}</div>
+            <div style={{fontSize:9,color:'#6B7280'}}>HCP {row.hcp}</div>
+          </div>
+        ))}
+        <div style={{fontSize:10,color:'#6B7280',textAlign:'center'}}>Res</div>
+        <div style={{fontSize:10,color:'#6B7280',textAlign:'center'}}>Stat</div>
+      </div>
 
       {/* Vertical scorecard sections */}
       {[{label:'Front 9',start:0,end:9},{label:'Back 9',start:9,end:18}].map(({label,start,end})=>{
@@ -1118,22 +1140,114 @@ function PairingsEditor({day,pairings,setPairings,players,onSave,saving}: {
 }
 
 // ── More (admin) ──────────────────────────────────────────
-function More({activeYear,allYears,players,courses,pairings,scores,setupDone,onSetup,onStartYear,onSwitchYear,onEndTournament}: {
+function More({activeYear,allYears,players,courses,pairings,setPairings,scores,setupDone,onSetup,onStartYear,onSwitchYear,onEndTournament,onSaveMatches,savingPairings}: {
   activeYear:number|null; allYears:number[]; players:Player[]; courses:Course[];
-  pairings:Pairing[]; scores:Record<string,(number|null)[]>;
+  pairings:Pairing[]; setPairings:(p:Pairing[])=>void; scores:Record<string,(number|null)[]>;
   setupDone:boolean; onSetup:()=>void; onStartYear:(y:number)=>void;
   onSwitchYear:(y:number)=>void; onEndTournament:()=>void;
+  onSaveMatches:(day:number)=>Promise<void>; savingPairings:boolean;
 }) {
+  const [matchDay, setMatchDay] = useState<number|null>(null);
+  const [adminUnlocked, setAdminUnlocked] = useState(false);
+  const [showPwdPrompt, setShowPwdPrompt] = useState(false);
+  const [pwdInput, setPwdInput] = useState('');
+  const [pwdError, setPwdError] = useState(false);
+
+  const tryUnlock = () => {
+    if(pwdInput === 'Z@rminae2009') {
+      setAdminUnlocked(true);
+      setShowPwdPrompt(false);
+      setPwdInput('');
+      setPwdError(false);
+      onSetup();
+    } else {
+      setPwdError(true);
+      setPwdInput('');
+    }
+  };
+
+  const handleSetupClick = () => {
+    if(adminUnlocked) { onSetup(); return; }
+    setShowPwdPrompt(true);
+    setPwdError(false);
+    setPwdInput('');
+  };
+
+  if(matchDay!==null) return (
+    <div>
+      <div style={{display:'flex',alignItems:'center',gap:10,marginBottom:'1rem'}}>
+        <button onClick={()=>setMatchDay(null)} style={{background:'none',border:'none',cursor:'pointer',color:C.mid,fontSize:14,padding:0}}>← More</button>
+        <span style={{fontSize:15,fontWeight:700,color:C.dark}}>Day {matchDay} · Set matches</span>
+      </div>
+      <div style={{...card,background:C.dark,border:'none',padding:'0.75rem 1rem',marginBottom:'1rem'}}>
+        <div style={{fontSize:11,color:C.gold,fontWeight:600,letterSpacing:'0.08em',marginBottom:2}}>DAY {matchDay} · {DAY_FMT[matchDay].toUpperCase()}</div>
+        <div style={{fontSize:14,fontWeight:600,color:C.white}}>
+          {courses.find(c=>c.day===matchDay)?.name||'Course TBC'}
+        </div>
+      </div>
+      <PairingsEditor day={matchDay} pairings={pairings} setPairings={setPairings} players={players}
+        onSave={()=>onSaveMatches(matchDay)} saving={savingPairings}/>
+    </div>
+  );
+
   return (
     <div>
       <div style={{fontSize:16,fontWeight:700,color:C.dark,marginBottom:'1.25rem'}}>More</div>
+
+      {/* Set matches */}
+      {setupDone&&activeYear&&(
+        <div style={card}>
+          <div style={{fontSize:11,fontWeight:700,color:C.mid,letterSpacing:'0.08em',marginBottom:10}}>SET MATCHES</div>
+          <div style={{display:'flex',flexDirection:'column',gap:8}}>
+            {[1,2,3].map(d=>{
+              const dm=pairings.filter(p=>p.day===d);
+              const setPaired=d<3
+                ?dm.filter(m=>m.teamA?.[0]&&m.teamB?.[0]).length
+                :dm.filter(m=>m.playerA&&m.playerB).length;
+              const total=d<3?5:10;
+              const done=setPaired===total;
+              return (
+                <button key={d} onClick={()=>setMatchDay(d)}
+                  style={{display:'flex',alignItems:'center',justifyContent:'space-between',padding:'12px 14px',borderRadius:10,border:`1.5px solid ${done?C.pakGreen+'44':C.border}`,background:done?C.pakLight:C.white,cursor:'pointer',textAlign:'left'}}>
+                  <div>
+                    <div style={{fontSize:13,fontWeight:600,color:C.dark}}>Day {d} · {DAY_FMT[d]}</div>
+                    <div style={{fontSize:11,color:C.mid,marginTop:2}}>{courses.find(c=>c.day===d)?.name||'Course TBC'}</div>
+                  </div>
+                  <div style={{textAlign:'right'}}>
+                    <div style={{fontSize:12,fontWeight:600,color:done?C.pakGreen:setPaired>0?C.gold:C.mid}}>{setPaired}/{total} set</div>
+                    <div style={{fontSize:10,color:C.mid,marginTop:2}}>→</div>
+                  </div>
+                </button>
+              );
+            })}
+          </div>
+        </div>
+      )}
 
       {/* Current tournament */}
       {activeYear&&(
         <div style={card}>
           <div style={{fontSize:11,fontWeight:700,color:C.mid,letterSpacing:'0.08em',marginBottom:10}}>CURRENT TOURNAMENT · {activeYear}</div>
           <div style={{display:'flex',gap:8,flexWrap:'wrap'}}>
-            <Btn label="Edit setup" onClick={onSetup} style={{flex:1}}/>
+            <Btn label={adminUnlocked ? "Edit setup ✓" : "Edit setup 🔒"} onClick={handleSetupClick} style={{flex:1}}/>
+            {showPwdPrompt&&(
+              <div style={{position:'fixed',inset:0,background:'rgba(0,0,0,0.6)',display:'flex',alignItems:'center',justifyContent:'center',padding:'1rem',zIndex:100}}>
+                <div style={{background:C.white,borderRadius:16,padding:'1.5rem',width:'100%',maxWidth:360}}>
+                  <div style={{fontSize:15,fontWeight:700,color:C.dark,marginBottom:4}}>Admin access required</div>
+                  <div style={{fontSize:13,color:C.mid,marginBottom:'1.25rem'}}>Enter the admin password to edit setup.</div>
+                  <label style={lbl}>Password</label>
+                  <input style={{...inp,marginBottom:12}} type="password" value={pwdInput} placeholder="Enter password"
+                    onChange={e=>{setPwdInput(e.target.value);setPwdError(false);}}
+                    onKeyDown={e=>e.key==='Enter'&&tryUnlock()}
+                    autoFocus/>
+                  {pwdError&&<div style={{fontSize:12,color:C.red,marginBottom:10,background:C.redLight,padding:'8px 12px',borderRadius:8,fontWeight:500}}>Incorrect password</div>}
+                  <div style={{display:'flex',gap:8}}>
+                    <Btn label="Cancel" onClick={()=>{setShowPwdPrompt(false);setPwdInput('');setPwdError(false);}}/>
+                    <Btn label="Unlock →" primary onClick={tryUnlock}/>
+                  </div>
+                </div>
+              </div>
+            )}
             {setupDone&&<Btn label="End tournament" danger onClick={onEndTournament} style={{flex:1}}/>}
           </div>
         </div>
@@ -1432,7 +1546,6 @@ export default function App() {
   const [activeDay,setActiveDay]=useState(1);
   const [scoringMatch,setScoringMatch]=useState<{day:number;mid:string}|null>(null);
   const [scoringCard,setScoringCard]=useState<{day:number;pid:string}|null>(null);
-  const [pairingDay,setPairingDay]=useState<number|null>(null);
   const [savingPairings,setSavingPairings]=useState(false);
   const [showEndModal,setShowEndModal]=useState(false);
 
@@ -1491,7 +1604,6 @@ export default function App() {
     const dm=pairings.filter(p=>p.day===day);
     await fetch('/api/pairings',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({year:activeYear,pairings:dm})});
     setSavingPairings(false);
-    setPairingDay(null);
   };
   const handleEndComplete=async()=>{
     setShowEndModal(false);
@@ -1538,19 +1650,7 @@ export default function App() {
         course={courses.find(c=>c.day===scoringCard.day)!} scores={scores} onBack={()=>setScoringCard(null)}/>
     </div>
   );
-  if(pairingDay!==null) return (
-    <div style={{maxWidth:480,margin:'0 auto',padding:'0 1rem 5rem'}}>
-      <div style={{paddingTop:'0.75rem',paddingBottom:'0.75rem',marginBottom:'0.75rem'}}>
-        <div style={{fontSize:11,color:C.gold,fontWeight:700,letterSpacing:'0.08em'}}>JINNAH-ATTLEE SHIELD · {activeYear}</div>
-      </div>
-      <div style={{display:'flex',alignItems:'center',gap:10,marginBottom:'1rem'}}>
-        <button onClick={()=>setPairingDay(null)} style={{background:'none',border:'none',cursor:'pointer',color:C.mid,fontSize:14,padding:0}}>← Back</button>
-        <span style={{fontSize:15,fontWeight:700,color:C.dark}}>Day {pairingDay} Pairings</span>
-      </div>
-      <PairingsEditor day={pairingDay} pairings={pairings} setPairings={setPairings} players={players}
-        onSave={()=>savePairings(pairingDay)} saving={savingPairings}/>
-    </div>
-  );
+
 
   // Main nav
   const DAYS=[1,2,3];
@@ -1589,7 +1689,7 @@ export default function App() {
         {nav==='today'&&setupDone&&<Today day={activeDay} players={players} courses={courses} pairings={pairings} scores={scores} onSelectMatch={mid=>setScoringMatch({day:activeDay,mid})} onSelectCard={pid=>setScoringCard({day:activeDay,pid})}/>}
         {nav==='scores'&&setupDone&&<Leaderboard players={players} courses={courses} pairings={pairings} scores={scores} onEndTournament={()=>setShowEndModal(true)}/>}
         {nav==='d4'&&setupDone&&<Day4View players={players} courses={courses} scores={scores} onSave={saveScore}/>}
-        {nav==='more'&&<More activeYear={activeYear} allYears={allYears} players={players} courses={courses} pairings={pairings} scores={scores} setupDone={setupDone} onSetup={()=>setNav('setup')} onStartYear={startYear} onSwitchYear={switchYear} onEndTournament={()=>setShowEndModal(true)}/>}
+        {nav==='more'&&<More activeYear={activeYear} allYears={allYears} players={players} courses={courses} pairings={pairings} setPairings={setPairings} scores={scores} setupDone={setupDone} onSetup={()=>setNav('setup')} onStartYear={startYear} onSwitchYear={switchYear} onEndTournament={()=>setShowEndModal(true)} onSaveMatches={savePairings} savingPairings={savingPairings}/>}
         {nav==='setup'&&activeYear&&<Setup onBack={()=>setNav('home')} year={activeYear} onDone={()=>{setSetupDone(true);loadYear(activeYear);setNav('today');}} initPlayers={players} initCourses={courses} alreadyDone={setupDone}/>}
       </div>
 
@@ -1611,11 +1711,7 @@ export default function App() {
                 <span style={{fontSize:18,color:active?C.dark:'#9CA3AF'}}>{icon}</span>
                 <span style={{fontSize:9,fontWeight:active?700:400,color:active?C.dark:'#9CA3AF',letterSpacing:'0.02em'}}>{label}</span>
               </button>
-              {showPairingBtn&&(
-                <button onClick={()=>setPairingDay(activeDay)} style={{fontSize:9,color:C.mid,background:'none',border:'none',cursor:'pointer',padding:'0 0 6px',fontWeight:500}}>
-                  Edit pairings
-                </button>
-              )}
+
             </div>
           );
         })}
