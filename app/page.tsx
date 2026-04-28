@@ -445,8 +445,13 @@ function Today({day,players,courses,pairings,scores,onSelectMatch,onSelectCard}:
         const pts=matchPts(s);
         const done=s.closed||s.pl===18;
         const paired=day<3?!!(m.teamA?.[0]&&m.teamB?.[0]):!!(m.playerA&&m.playerB);
-        const lA=day<3?`${nameOf(m.teamA?.[0])} & ${nameOf(m.teamA?.[1])}`:nameOf(m.playerA);
-        const lB=day<3?`${nameOf(m.teamB?.[0])} & ${nameOf(m.teamB?.[1])}`:nameOf(m.playerB);
+        const hiOf=(pid:string)=>{const p=players.find(x=>x.id===pid);return p?.hi!=null?Math.round(Number(p.hi)):0;};
+        const lA=day===1
+          ?`${nameOf(m.teamA?.[0])} & ${nameOf(m.teamA?.[1])} (${scrambHcp(hiOf(m.teamA?.[0]),hiOf(m.teamA?.[1]))})`
+          :day<3?`${nameOf(m.teamA?.[0])} & ${nameOf(m.teamA?.[1])}`:nameOf(m.playerA);
+        const lB=day===1
+          ?`${nameOf(m.teamB?.[0])} & ${nameOf(m.teamB?.[1])} (${scrambHcp(hiOf(m.teamB?.[0]),hiOf(m.teamB?.[1]))})`
+          :day<3?`${nameOf(m.teamB?.[0])} & ${nameOf(m.teamB?.[1])}`:nameOf(m.playerB);
         const winnerTid = done && s.sc!==0 ? (s.sc>0?'A':'B') : null;
 
         return (
@@ -718,8 +723,12 @@ function ScoreEntry({day,matchId,pairings,players,course,scores,onSave,onBack}: 
         </div>
       )}
 
-      {/* ── Player header card (fixed, not sticky) ── */}
-      <div style={{marginBottom:'0.75rem',background:C.dark,borderRadius:12,overflow:'hidden'}}>
+      {/* ── Sticky scorecard header: player names + column labels ── */}
+      <div style={{
+        position:'sticky', top:52, zIndex:20,
+        background:C.dark, borderRadius:12, overflow:'hidden',
+        marginBottom:'0.75rem', boxShadow:'0 4px 16px rgba(0,0,0,0.4)'
+      }}>
         {/* Team name rows */}
         {(rows.length<=2?rows:[rows[0],rows[2]]).map((row,ri)=>{
           const teamCol=row.teamId==='A'?C.pakGreen:C.engNavy;
@@ -727,14 +736,14 @@ function ScoreEntry({day,matchId,pairings,players,course,scores,onSave,onBack}: 
           const teammates=rows.filter(r=>r.teamId===row.teamId);
           return (
             <div key={ri} style={{display:'flex',alignItems:'center',justifyContent:'space-between',
-              padding:'8px 12px',background:teamBg,borderBottom:`1px solid rgba(255,255,255,0.06)`}}>
-              <div style={{display:'flex',alignItems:'center',gap:8,flexWrap:'wrap',flex:1}}>
+              padding:'7px 10px',background:teamBg,borderBottom:`1px solid rgba(255,255,255,0.06)`}}>
+              <div style={{display:'flex',alignItems:'center',gap:6,flexWrap:'wrap',flex:1}}>
                 {teammates.map((tm,ti)=>(
-                  <div key={ti} style={{display:'flex',alignItems:'center',gap:6}}>
-                    <div style={{background:teamCol,borderRadius:5,padding:'2px 7px',minWidth:32,textAlign:'center'}}>
-                      <div style={{fontSize:11,fontWeight:800,color:C.white,letterSpacing:'0.02em'}}>{tm.initials}</div>
+                  <div key={ti} style={{display:'flex',alignItems:'center',gap:5}}>
+                    <div style={{background:teamCol,borderRadius:5,padding:'2px 6px',minWidth:30,textAlign:'center'}}>
+                      <div style={{fontSize:10,fontWeight:800,color:C.white,letterSpacing:'0.02em'}}>{tm.initials}</div>
                     </div>
-                    <div style={{fontSize:12,fontWeight:600,color:C.white}}>{tm.label}</div>
+                    <div style={{fontSize:11,fontWeight:600,color:C.white}}>{tm.label}</div>
                     {ti<teammates.length-1&&<span style={{color:'rgba(255,255,255,0.4)',fontSize:10,paddingLeft:2}}>·</span>}
                   </div>
                 ))}
@@ -745,20 +754,21 @@ function ScoreEntry({day,matchId,pairings,players,course,scores,onSave,onBack}: 
             </div>
           );
         })}
-        {/* Column headers */}
+        {/* Column label row — always visible */}
         <div style={{display:'grid',
           gridTemplateColumns:`52px 28px 24px ${rows.map(()=>'1fr').join(' ')} 56px 56px`,
-          gap:2,padding:'5px 8px',background:'rgba(255,255,255,0.04)',alignItems:'center'}}>
+          gap:2,padding:'5px 8px',background:'rgba(255,255,255,0.06)',alignItems:'center',
+          borderTop:'1px solid rgba(255,255,255,0.06)'}}>
           <div style={{fontSize:10,fontWeight:700,color:C.gold,letterSpacing:'0.06em'}}>HOLE</div>
-          <div style={{fontSize:10,fontWeight:700,color:'#9CA3AF',textAlign:'center'}}>Par</div>
-          <div style={{fontSize:10,fontWeight:700,color:'#9CA3AF',textAlign:'center'}}>SI</div>
+          <div style={{fontSize:10,fontWeight:700,color:'#D1D5DB',textAlign:'center'}}>Par</div>
+          <div style={{fontSize:10,fontWeight:700,color:'#D1D5DB',textAlign:'center'}}>SI</div>
           {rows.map((row,ri)=>(
             <div key={ri} style={{textAlign:'center'}}>
               <div style={{fontSize:12,fontWeight:800,color:row.teamId==='A'?'#4ADE80':'#60A5FA'}}>{row.initials}</div>
             </div>
           ))}
-          <div style={{fontSize:10,fontWeight:700,color:'#9CA3AF',textAlign:'center'}}>{day===2?'Pts':'Res'}</div>
-          <div style={{fontSize:10,fontWeight:700,color:'#9CA3AF',textAlign:'center'}}>Status</div>
+          <div style={{fontSize:10,fontWeight:700,color:'#D1D5DB',textAlign:'center'}}>{day===2?'Pts':'Res'}</div>
+          <div style={{fontSize:10,fontWeight:700,color:'#D1D5DB',textAlign:'center'}}>Stat</div>
         </div>
       </div>
 
