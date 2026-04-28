@@ -445,8 +445,18 @@ function Today({day,players,courses,pairings,scores,onSelectMatch,onSelectCard}:
         const pts=matchPts(s);
         const done=s.closed||s.pl===18;
         const paired=day<3?!!(m.teamA?.[0]&&m.teamB?.[0]):!!(m.playerA&&m.playerB);
-        const lA=day<3?`${nameOf(m.teamA?.[0])} & ${nameOf(m.teamA?.[1])}`:nameOf(m.playerA);
-        const lB=day<3?`${nameOf(m.teamB?.[0])} & ${nameOf(m.teamB?.[1])}`:nameOf(m.playerB);
+        const phOf=(pid:string)=>{const p=players.find(x=>x.id===pid);return p?.hi!==null&&p?.hi!==undefined?playerPH(p,course):null;};
+        const nameHcp=(pid:string)=>{const p=players.find(x=>x.id===pid);const h=p?.hi!==null&&p?.hi!==undefined?playerPH(p,course):null;return h!==null?`${nameOf(pid)} (${h})`:`${nameOf(pid)}`;};
+        const teamHcpA=day===1?scrambHcp(phOf(m.teamA?.[0]||'')||0,phOf(m.teamA?.[1]||'')||0):null;
+        const teamHcpB=day===1?scrambHcp(phOf(m.teamB?.[0]||'')||0,phOf(m.teamB?.[1]||'')||0):null;
+        const lA=day===1
+          ?`Pakistan (${teamHcpA}) ${nameHcp(m.teamA?.[0]||'')} & ${nameHcp(m.teamA?.[1]||'')}`
+          :day===2?`${nameHcp(m.teamA?.[0]||'')} & ${nameHcp(m.teamA?.[1]||'')}`
+          :nameHcp(m.playerA);
+        const lB=day===1
+          ?`England (${teamHcpB}) ${nameHcp(m.teamB?.[0]||'')} & ${nameHcp(m.teamB?.[1]||'')}`
+          :day===2?`${nameHcp(m.teamB?.[0]||'')} & ${nameHcp(m.teamB?.[1]||'')}`
+          :nameHcp(m.playerB);
         const winnerTid = done && s.sc!==0 ? (s.sc>0?'A':'B') : null;
 
         return (
@@ -734,8 +744,11 @@ function ScoreEntry({day,matchId,pairings,players,course,scores,onSave,onBack}: 
                     <div style={{background:teamCol,borderRadius:5,padding:'2px 7px',minWidth:32,textAlign:'center'}}>
                       <div style={{fontSize:11,fontWeight:800,color:C.white,letterSpacing:'0.02em'}}>{tm.initials}</div>
                     </div>
-                    <div style={{fontSize:12,fontWeight:600,color:C.white}}>{tm.label}</div>
-                    {ti<teammates.length-1&&<span style={{color:'rgba(255,255,255,0.4)',fontSize:10}}>·</span>}
+                    <div>
+                      <div style={{fontSize:12,fontWeight:600,color:C.white}}>{tm.label}</div>
+                      <div style={{fontSize:10,color:'rgba(255,255,255,0.65)'}}>PH {tm.hcp}</div>
+                    </div>
+                    {ti<teammates.length-1&&<span style={{color:'rgba(255,255,255,0.4)',fontSize:10,paddingLeft:2}}>·</span>}
                   </div>
                 ))}
               </div>
@@ -1950,7 +1963,6 @@ export default function App() {
           {k:'home' as const,icon:'⌂',label:'Home'},
           {k:'today' as const,icon:'⛳',label:'Today'},
           {k:'scores' as const,icon:'◉',label:'Live'},
-          {k:'d4' as const,icon:'★',label:'Day 4'},
           {k:'more' as const,icon:'···',label:'More'},
         ].map(({k,icon,label})=>{
           const active=nav===k||(k==='today'&&nav==='today');
