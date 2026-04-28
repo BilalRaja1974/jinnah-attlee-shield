@@ -61,10 +61,10 @@ function shotsOnHole(hcp:number, si:number): number {
   if(hcp<=0) return 0;
   return Math.floor(hcp/18)+(si<=(hcp%18)?1:0);
 }
-function playerPH(player:Player, course:Course): number {
-  const tee = activeTeeOf(course);
-  if(player.hi===null||!tee.cr) return 0;
-  return calcPH(Number(player.hi), tee.slope, Number(tee.cr), tee.par);
+function playerPH(player:Player, _course:Course): number {
+  // Use raw handicap index — no slope/CR adjustment
+  if(player.hi===null) return 0;
+  return Math.round(Number(player.hi));
 }
 function holeWinner(nA:number, nB:number): 'A'|'B'|'H' {
   return nA<nB?'A':nB<nA?'B':'H';
@@ -655,12 +655,12 @@ function ScoreEntry({day,matchId,pairings,players,course,scores,onSave,onBack}: 
           );})()}
           {day===2&&(()=>{const mn=Math.min(...rows.map(r=>r.hcp));return(
             <div>
-              <div style={{fontSize:11,color:'rgba(255,255,255,0.8)',marginBottom:4}}>Adjusted handicaps (90% of diff to lowest PH {mn}):</div>
+              <div style={{fontSize:11,color:'rgba(255,255,255,0.8)',marginBottom:4}}>Adjusted handicaps (90% of diff to lowest HCP {mn}):</div>
               <div style={{display:'flex',gap:8,flexWrap:'wrap'}}>
                 {rows.map((row,ri)=>(
                   <div key={ri} style={{fontSize:11}}>
                     <span style={{color:row.teamId==='A'?'#4ADE80':'#60A5FA',fontWeight:700}}>{row.initials}</span>
-                    <span style={{color:'rgba(255,255,255,0.8)'}}> PH {row.hcp} → </span>
+                    <span style={{color:'rgba(255,255,255,0.8)'}}> HCP {row.hcp} → </span>
                     <span style={{color:C.white,fontWeight:700}}>{row.adjHcp}</span>
                   </div>
                 ))}
@@ -672,7 +672,7 @@ function ScoreEntry({day,matchId,pairings,players,course,scores,onSave,onBack}: 
               {rows.map((row,ri)=>(
                 <div key={ri} style={{fontSize:11}}>
                   <span style={{color:row.teamId==='A'?'#4ADE80':'#60A5FA',fontWeight:700}}>{row.initials}</span>
-                  <span style={{color:'rgba(255,255,255,0.8)'}}> PH {row.hcp} → net </span>
+                  <span style={{color:'rgba(255,255,255,0.8)'}}> HCP {row.hcp} → net </span>
                   <span style={{color:C.white,fontWeight:700}}>{row.adjHcp===0?'scratch':`gets ${row.adjHcp}`}</span>
                 </div>
               ))}
@@ -695,7 +695,7 @@ function ScoreEntry({day,matchId,pairings,players,course,scores,onSave,onBack}: 
             <div style={{fontWeight:600,marginBottom:4,color:C.dark}}>Shot requirements (per player, per round)</div>
             <div style={{marginBottom:8,color:C.mid}}>Each player must contribute a minimum of <strong>7 tee shots</strong> and <strong>5 second shots</strong>. Par 3 tee shots count toward the 7 drive requirement. Par 3 second shots do not count toward the 5 second shot requirement.</div>
             <div style={{fontWeight:600,marginBottom:4,color:C.dark}}>Team handicap</div>
-            <div style={{color:C.mid}}>35% × lower playing HCP + 15% × higher playing HCP, rounded. Higher handicap team receives the difference in shots, allocated by stroke index.</div>
+            <div style={{color:C.mid}}>35% × lower HCP + 15% × higher HCP, rounded. Higher handicap team receives the difference in shots, allocated by stroke index.</div>
           </>}
           {day===2&&<>
             <div style={{fontWeight:700,marginBottom:6,fontSize:14}}>Fourball — Best Ball &amp; Aggregate</div>
@@ -703,13 +703,13 @@ function ScoreEntry({day,matchId,pairings,players,course,scores,onSave,onBack}: 
             <div style={{marginBottom:4,color:C.mid}}>• <strong>Point 1 (Best Ball):</strong> Lower net score from each pair wins 1 point. Halved if equal.</div>
             <div style={{marginBottom:8,color:C.mid}}>• <strong>Point 2 (Aggregate):</strong> Lower combined net score from each pair wins 1 point. Halved if equal.</div>
             <div style={{fontWeight:600,marginBottom:4,color:C.dark}}>Handicap</div>
-            <div style={{color:C.mid}}>Lowest playing handicap in the 4-ball plays off scratch. Others receive 90% of their difference to that player, rounded.</div>
+            <div style={{color:C.mid}}>Lowest handicap in the 4-ball plays off scratch. Others receive 90% of their difference to that player, rounded.</div>
           </>}
           {day===3&&<>
             <div style={{fontWeight:700,marginBottom:6,fontSize:14}}>Singles Match Play</div>
             <div style={{marginBottom:8,color:C.mid}}>Each player plays their own ball. Lower net score wins the hole. The player more holes up than holes remaining wins the match.</div>
             <div style={{fontWeight:600,marginBottom:4,color:C.dark}}>Handicap</div>
-            <div style={{color:C.mid}}>Lower handicap player plays off scratch. Higher handicap player receives the full difference in shots, allocated by stroke index.</div>
+            <div style={{color:C.mid}}>Lower handicap plays off scratch. Higher handicap player receives the full difference in shots, allocated by stroke index.</div>
           </>}
           <div style={{marginTop:10,paddingTop:10,borderTop:`1px solid ${C.border}`,color:C.mid,fontSize:12}}>
             {day===2?'Each hole: 0–2 points available per team (best ball + aggregate)'
