@@ -1746,19 +1746,27 @@ function More({activeYear,allYears,players,courses,pairings,setPairings,scores,s
 }
 
 // ── End tournament modal ──────────────────────────────────
-function EndTournamentModal({year,players,courses,pairings,scores,onClose,onComplete}: {
+function EndTournamentModal({year,players,courses,pairings,scores,overrides,onClose,onComplete}: {
   year:number; players:Player[]; courses:Course[]; pairings:Pairing[];
-  scores:Record<string,(number|null)[]>; onClose:()=>void; onComplete:()=>void;
+  scores:Record<string,(number|null)[]>; overrides:MatchOverride[]; onClose:()=>void; onComplete:()=>void;
 }) {
   const [pwd,setPwd]=useState('');
   const [venue,setVenue]=useState('');
   const [submitting,setSubmitting]=useState(false);
   const [error,setError]=useState('');
   const nameOf=(pid:string)=>players.find(p=>p.id===pid)?.name||'?';
+  // Apply overrides when calculating points
+  const effPts=(matchId:string,day:number,match:Pairing,course:Course)=>{
+    const ov=overrides.find(o=>o.matchId===matchId);
+    if(ov){const w=day===3?2:1,h=day===3?1:0.5;return{pts:ov.result==='A'?{A:w,B:0}:ov.result==='B'?{A:0,B:w}:{A:h,B:h},stat:{sc:ov.result==='A'?1:ov.result==='B'?-1:0,pl:18,closed:false,rem:0} as MatchStat,isOverride:true};}
+    const res=getResults(day,match,players,course,scores);
+    const stat=matchStat(res);
+    return{pts:matchPts(stat,day),stat,isOverride:false};
+  };
   const dayPts=(day:number)=>{
     let a=0,b=0;
     const course=courses.find(c=>c.day===day)!;
-    pairings.filter(m=>m.day===day).forEach(m=>{const res=getResults(day,m,players,course,scores);const pts=matchPts(matchStat(res),day);a+=pts.A;b+=pts.B;});
+    pairings.filter(m=>m.day===day).forEach(m=>{const{pts}=effPts(m.id,day,m,course);a+=pts.A;b+=pts.B;});
     return{A:a,B:b};
   };
   const d={1:dayPts(1),2:dayPts(2),3:dayPts(3)};
@@ -1771,11 +1779,11 @@ function EndTournamentModal({year,players,courses,pairings,scores,onClose,onComp
     pairings.filter(m=>m.day===day).forEach(m=>{
       const paired=day<3?!!(m.teamA?.[0]&&m.teamB?.[0]):!!(m.playerA&&m.playerB);
       if(!paired) return;
-      const res=getResults(day,m,players,course,scores);
-      const s=matchStat(res); const pts=matchPts(s,day);
+      const{pts,stat:s,isOverride}=effPts(m.id,day,m,course);
       const lA=day<3?`${nameOf(m.teamA[0])} & ${nameOf(m.teamA[1])}`:nameOf(m.playerA);
       const lB=day<3?`${nameOf(m.teamB[0])} & ${nameOf(m.teamB[1])}`:nameOf(m.playerB);
-      matchRecords.push({day,labelA:lA,labelB:lB,result:s.pl===0?'—':statLabel(s),ptsA:pts.A,ptsB:pts.B});
+      const resultLabel=isOverride?(overrides.find(o=>o.matchId===m.id)!.result==='A'?`${TNAME.A} wins`:overrides.find(o=>o.matchId===m.id)!.result==='B'?`${TNAME.B} wins`:'Halved'):s.pl===0?'—':statLabel(s);
+      matchRecords.push({day,labelA:lA,labelB:lB,result:resultLabel,ptsA:pts.A,ptsB:pts.B});
     });
   });
   const submit=async()=>{
@@ -2220,7 +2228,7 @@ export default function App() {
         })}
       </div>
 
-      {showEndModal&&activeYear&&<EndTournamentModal year={activeYear} players={players} courses={courses} pairings={pairings} scores={scores} onClose={()=>setShowEndModal(false)} onComplete={handleEndComplete}/>}
+      {showEndModal&&activeYear&&<EndTournamentModal year={activeYear} players={players} courses={courses} pairings={pairings} scores={scores} overrides={overrides} onClose={()=>setShowEndModal(false)} onComplete={handleEndComplete}/>}
     </div>
   );
 }
