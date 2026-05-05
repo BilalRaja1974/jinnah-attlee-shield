@@ -43,6 +43,18 @@ export async function initDB() {
     key TEXT PRIMARY KEY,
     value TEXT NOT NULL
   )`;
+  await sql`CREATE TABLE IF NOT EXISTS match_overrides (
+    year INTEGER NOT NULL,
+    match_id TEXT NOT NULL,
+    day INTEGER NOT NULL,
+    result TEXT NOT NULL,
+    PRIMARY KEY (year, match_id)
+  )`;
+  await sql`CREATE TABLE IF NOT EXISTS locked_days (
+    year INTEGER NOT NULL,
+    day INTEGER NOT NULL,
+    PRIMARY KEY (year, day)
+  )`;
   await sql`CREATE TABLE IF NOT EXISTS completed_tournaments (
     year INTEGER PRIMARY KEY,
     winner TEXT,
