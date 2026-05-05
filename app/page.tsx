@@ -270,7 +270,6 @@ function Home({setupDone,activeYear,allYears,completedTournaments,liveScore,onSt
   onStartYear:(y:number)=>void; onSwitchYear:(y:number)=>void;
   onSetup:()=>void; onPlay:()=>void;
 }) {
-  const [showHistory, setShowHistory] = useState(false);
   const pWins = completedTournaments.filter(r=>!r.tied&&r.winner==='Pakistan').length;
   const eWins = completedTournaments.filter(r=>!r.tied&&r.winner==='England').length;
   const ties = completedTournaments.filter(r=>r.tied).length;
@@ -306,52 +305,34 @@ function Home({setupDone,activeYear,allYears,completedTournaments,liveScore,onSt
           ))}
         </div>
 
-        <button onClick={()=>setShowHistory(!showHistory)} style={{display:'flex',alignItems:'center',justifyContent:'space-between',width:'100%',background:'none',border:'none',cursor:'pointer',padding:'4px 0',color:C.mid,fontSize:12,fontWeight:500}}>
-          <span>Previous editions ({completedTournaments.length})</span>
-          <span>{showHistory?'▲':'▼'}</span>
-        </button>
-
-        {showHistory && (
-          <div style={{marginTop:8,borderTop:`1px solid ${C.border}`,paddingTop:8}}>
-            {completedTournaments.map((r,i)=>(
-              <div key={r.year} style={{padding:'8px 0',borderBottom:i<completedTournaments.length-1?`1px solid ${C.border}`:'none'}}>
-                <div style={{display:'flex',alignItems:'center',justifyContent:'space-between',marginBottom:r.matches?.length>0?6:0}}>
-                  <div>
-                    <span style={{fontSize:14,fontWeight:700,color:C.dark,marginRight:8}}>{r.year}</span>
-                    <span style={{fontSize:12,color:C.mid}}>{r.venue||'—'}</span>
-                  </div>
-                  <span style={{fontSize:12,fontWeight:600,padding:'3px 10px',borderRadius:999,
-                    background:r.tied?'#F3F4F6':r.winner==='Pakistan'?C.pakLight:C.engLight,
-                    color:r.tied?C.mid:r.winner==='Pakistan'?C.pakGreen:C.engNavy}}>
-                    {r.tied?'Tied':`${r.winner} won`}
-                    {!r.tied&&r.scoreA>0?` · ${r.winner==='Pakistan'?r.scoreA:r.scoreB}–${r.winner==='Pakistan'?r.scoreB:r.scoreA}`:''}
-                  </span>
-                </div>
-                {r.matches?.length>0&&(
-                  <div style={{marginLeft:4,display:'flex',flexDirection:'column',gap:3}}>
-                    {r.matches.map((m,mi)=>(
-                      <div key={mi} style={{display:'flex',alignItems:'center',gap:6,fontSize:11}}>
-                        <div style={{flex:1,color:TCOL.A,fontWeight:500}}>{m.labelA}</div>
-                        <div style={{minWidth:90,textAlign:'center',fontSize:10,fontWeight:600,padding:'2px 6px',borderRadius:999,
-                          background:m.ptsA>m.ptsB?C.pakLight:m.ptsB>m.ptsA?C.engLight:'#F3F4F6',
-                          color:m.ptsA>m.ptsB?C.pakGreen:m.ptsB>m.ptsA?C.engNavy:C.mid}}>{m.result}</div>
-                        <div style={{flex:1,color:TCOL.B,textAlign:'right',fontWeight:500}}>{m.labelB}</div>
-                      </div>
-                    ))}
-                  </div>
-                )}
+        <div style={{fontSize:11,fontWeight:700,color:C.mid,letterSpacing:'0.08em',marginBottom:'0.5rem'}}>PREVIOUS EDITIONS</div>
+        <div style={{borderTop:`1px solid ${C.border}`}}>
+          {completedTournaments.length===0&&(
+            <div style={{fontSize:13,color:C.mid,textAlign:'center',padding:'0.75rem 0'}}>No completed editions yet</div>
+          )}
+          {completedTournaments.map((r,i)=>(
+            <div key={r.year} style={{display:'flex',alignItems:'center',justifyContent:'space-between',
+              padding:'8px 0',borderBottom:i<completedTournaments.length-1?`1px solid ${C.border}`:'none'}}>
+              <div>
+                <span style={{fontSize:14,fontWeight:700,color:C.dark,marginRight:8}}>{r.year}</span>
+                <span style={{fontSize:12,color:C.mid}}>{r.venue||'—'}</span>
               </div>
-            ))}
-            {completedTournaments.length===0&&<div style={{fontSize:13,color:C.mid,textAlign:'center',padding:'0.5rem 0'}}>No completed editions yet</div>}
-          </div>
-        )}
+              <span style={{fontSize:12,fontWeight:600,padding:'3px 10px',borderRadius:999,
+                background:r.tied?'#F3F4F6':r.winner==='Pakistan'?C.pakLight:C.engLight,
+                color:r.tied?C.mid:r.winner==='Pakistan'?C.pakGreen:C.engNavy}}>
+                {r.tied?'Tied':`${r.winner} won`}
+                {!r.tied&&r.scoreA>0?` · ${r.winner==='Pakistan'?r.scoreA:r.scoreB}–${r.winner==='Pakistan'?r.scoreB:r.scoreA}`:''}
+              </span>
+            </div>
+          ))}
+        </div>
       </div>
 
       {/* CTA */}
       {/* Live score widget */}
       {activeYear&&setupDone&&liveScore&&(
         <div style={{...card,background:C.dark,border:'none',marginBottom:'0.75rem',padding:'1rem 1.25rem'}}>
-          <div style={{fontSize:10,fontWeight:700,color:C.gold,letterSpacing:'0.1em',marginBottom:10}}>LIVE · {activeYear}</div>
+          <div style={{fontSize:10,fontWeight:700,color:C.gold,letterSpacing:'0.1em',marginBottom:10}}>{activeYear} · SCORE</div>
           <div style={{display:'flex',alignItems:'center',justifyContent:'center',gap:12,flexWrap:'wrap'}}>
             <div style={{display:'flex',alignItems:'center',gap:10}}>
               <span style={{fontSize:16,fontWeight:800,color:'#4ADE80'}}>{TNAME.A}</span>
@@ -363,7 +344,7 @@ function Home({setupDone,activeYear,allYears,completedTournaments,liveScore,onSt
               <span style={{fontSize:16,fontWeight:800,color:'#60A5FA'}}>{TNAME.B}</span>
             </div>
           </div>
-          {liveScore.holesPlayed>0&&<div style={{textAlign:'center',fontSize:11,color:'rgba(255,255,255,0.5)',marginTop:6}}>{liveScore.holesPlayed} holes played today</div>}
+          {liveScore.A===0&&liveScore.B===0&&<div style={{textAlign:'center',fontSize:11,color:'rgba(255,255,255,0.5)',marginTop:6}}>Tournament in progress</div>}
         </div>
       )}
 
@@ -2191,13 +2172,22 @@ export default function App() {
         <div style={{height:'1rem'}}/>
         {nav==='home'&&<Home setupDone={setupDone} activeYear={activeYear} allYears={allYears} completedTournaments={completedTournaments}
         liveScore={setupDone&&courses.length>0?(()=>{
-          const d=activeDay||1; const course=courses.find(c=>c.day===d);
-          if(!course) return null;
           let a=0,b=0,hp=0;
-          pairings.filter(m=>m.day===d).forEach(m=>{
-            const res=getResults(d,m,players,course,scores);
-            const pts2=matchPts(matchStat(res),d);a+=pts2.A;b+=pts2.B;
-            const played=res.filter(r=>r!=null).length; if(played>hp)hp=played;
+          [1,2,3].forEach(d=>{
+            const course=courses.find(c=>c.day===d);
+            if(!course) return;
+            pairings.filter(m=>m.day===d).forEach(m=>{
+              const ov=overrides.find(o=>o.matchId===m.id);
+              if(ov){
+                const w=d===3?2:1,h=d===3?1:0.5;
+                const p=ov.result==='A'?{A:w,B:0}:ov.result==='B'?{A:0,B:w}:{A:h,B:h};
+                a+=p.A;b+=p.B;
+              } else {
+                const res=getResults(d,m,players,course,scores);
+                const p=matchPts(matchStat(res),d);a+=p.A;b+=p.B;
+                const played=res.filter(r=>r!=null).length;if(played>hp)hp=played;
+              }
+            });
           });
           return{A:a,B:b,holesPlayed:hp};
         })():null}
