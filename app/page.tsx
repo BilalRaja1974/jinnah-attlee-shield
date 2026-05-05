@@ -2107,11 +2107,15 @@ export default function App() {
   };
   const handleEndComplete=async()=>{
     setShowEndModal(false);
-    const completed=await fetchJson('/api/completed');
-    const dbYears=new Set((completed as CompletedTournament[]).map((r:CompletedTournament)=>r.year));
-    const merged=[...SEED_HISTORY.filter(s=>!dbYears.has(s.year)),...(completed as CompletedTournament[])].sort((a:CompletedTournament,b:CompletedTournament)=>b.year-a.year);
-    setCompletedTournaments(merged);
     setNav('home');
+    // Small delay to ensure the DB write has committed before re-fetching
+    await new Promise(r=>setTimeout(r,800));
+    try {
+      const completed=await fetchJson('/api/completed');
+      const dbYears=new Set((completed as CompletedTournament[]).map((r:CompletedTournament)=>r.year));
+      const merged=[...SEED_HISTORY.filter(s=>!dbYears.has(s.year)),...(completed as CompletedTournament[])].sort((a:CompletedTournament,b:CompletedTournament)=>b.year-a.year);
+      setCompletedTournaments(merged);
+    } catch { /* keep existing state */ }
   };
 
   if(loadError) return (
