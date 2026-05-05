@@ -140,12 +140,14 @@ function statLabel(s:MatchStat): string {
   if(s.sc===0) return 'All square';
   return`${s.sc>0?TNAME.A:TNAME.B} ${Math.abs(s.sc)} up`;
 }
-function matchPts(s:MatchStat): {A:number;B:number} {
+function matchPts(s:MatchStat, day=1): {A:number;B:number} {
   const done=s.closed||s.pl===18;
   if(!done) return{A:0,B:0};
-  if(s.sc>0) return{A:1,B:0};
-  if(s.sc<0) return{A:0,B:1};
-  return{A:0.5,B:0.5};
+  // Day 3 singles: win=2pts, half=1pt each
+  const win=day===3?2:1, half=day===3?1:0.5;
+  if(s.sc>0) return{A:win,B:0};
+  if(s.sc<0) return{A:0,B:win};
+  return{A:half,B:half};
 }
 
 function fmtPt(n:number): string { return n%1===0?String(n):n.toFixed(1); }
@@ -384,9 +386,10 @@ function Home({setupDone,activeYear,allYears,completedTournaments,liveScore,onSt
 }
 
 // ── Today (match list for current day) ───────────────────
-function Today({day,players,courses,pairings,scores,lockedDays,onSelectMatch,onSelectCard}: {
+function Today({day,players,courses,pairings,scores,lockedDays,overrides,onSelectMatch,onSelectCard}: {
   day:number; players:Player[]; courses:Course[]; pairings:Pairing[];
-  scores:Record<string,(number|null)[]>; lockedDays:number[]; onSelectMatch:(mid:string)=>void; onSelectCard:(pid:string)=>void;
+  scores:Record<string,(number|null)[]>; lockedDays:number[]; overrides:MatchOverride[];
+  onSelectMatch:(mid:string)=>void; onSelectCard:(pid:string)=>void;
 }) {
   const course = courses.find(c=>c.day===day)!;
   const tee = activeTeeOf(course);
@@ -418,10 +421,11 @@ function Today({day,players,courses,pairings,scores,lockedDays,onSelectMatch,onS
       {/* Matches */}
       <div style={{fontSize:11,fontWeight:700,color:C.mid,letterSpacing:'0.08em',marginBottom:'0.5rem'}}>MATCHES</div>
       {dm.map((m,i)=>{
+        const ov=overrides.find(o=>o.matchId===m.id);
         const res=getResults(day,m,players,course,scores);
-        const s=matchStat(res);
-        const pts=matchPts(s);
-        const done=s.closed||s.pl===18;
+        const s=ov?{sc:ov.result==='A'?1:ov.result==='B'?-1:0,pl:18,closed:false,rem:0} as MatchStat:matchStat(res);
+        const pts=ov?(ov.result==='A'?{A:day===3?2:1,B:0}:ov.result==='B'?{A:0,B:day===3?2:1}:{A:day===3?1:0.5,B:day===3?1:0.5}):matchPts(s,day);
+        const done=s.closed||s.pl===18||!!ov;
         const paired=day<3?!!(m.teamA?.[0]&&m.teamB?.[0]):!!(m.playerA&&m.playerB);
         const hiOf=(pid:string)=>{const p=players.find(x=>x.id===pid);return p?.hi!=null?Math.round(Number(p.hi)):0;};
         const lA=day===1
@@ -447,15 +451,26 @@ function Today({day,players,courses,pairings,scores,lockedDays,onSelectMatch,onS
                 <div style={{fontSize:13,fontWeight:500,color:C.dark,marginTop:4}}>{lA}</div>
               </div>
               <div style={{textAlign:'center',minWidth:60}}>
-                {s.pl===0
-                  ? <span style={{fontSize:12,color:C.mid,fontWeight:500}}>vs</span>
-                  : <>
-                      <div style={{fontSize:22,fontWeight:700,color:winnerTid?TCOL[winnerTid]:C.mid}}>
-                        {s.sc===0?'AS':`${Math.abs(s.sc)}${s.closed?'&'+s.rem:''}`}
-                      </div>
-                      {done&&<div style={{fontSize:11,color:C.mid}}>{fmtPt(pts.A)} – {fmtPt(pts.B)}</div>}
-                    </>
-                }
+                {!paired ? <span style={{fontSize:12,color:C.mid,fontWeight:500}}>vs</span>
+                : ov ? (
+                  <div>
+                    <div style={{fontSize:11,fontWeight:700,padding:'3px 8px',borderRadius:999,
+                      color:winnerTid?TCOL[winnerTid as string]:C.gold,
+                      background:winnerTid?TLIGHT[winnerTid as string]:C.goldLight}}>
+                      {ov.result==='A'?TNAME.A:ov.result==='B'?TNAME.B:'Halved'}
+                    </div>
+                    <div style={{fontSize:9,color:C.gold,marginTop:2,fontWeight:600}}>override</div>
+                    <div style={{fontSize:11,color:C.mid,marginTop:1}}>{fmtPt(pts.A)} – {fmtPt(pts.B)}</div>
+                  </div>
+                ) : s.pl===0 ? <span style={{fontSize:12,color:C.mid,fontWeight:500}}>vs</span>
+                : (
+                  <>
+                    <div style={{fontSize:22,fontWeight:700,color:winnerTid?TCOL[winnerTid as string]:C.mid}}>
+                      {s.sc===0?'AS':`${Math.abs(s.sc)}${s.closed?'&'+s.rem:''}`}
+                    </div>
+                    {done&&<div style={{fontSize:11,color:C.mid}}>{fmtPt(pts.A)} – {fmtPt(pts.B)}</div>}
+                  </>
+                )}
               </div>
               <div style={{textAlign:'right'}}>
                 <TeamPill tid="B"/>
@@ -579,7 +594,7 @@ function ScoreEntry({day,matchId,pairings,players,course,scores,onSave,onBack}: 
   const mergedScores={...scores,...localScores};
   const res=getResults(day,match,players,course,mergedScores);
   const s=matchStat(res);
-  const pts=matchPts(s);
+  const pts=matchPts(s,day);
   const done=s.closed||s.pl===18;
 
   // Label: PK1/PK2 for Pakistan, EN1/EN2 for England (or PK/EN for singles/scramble)
@@ -703,6 +718,7 @@ function ScoreEntry({day,matchId,pairings,players,course,scores,onSave,onBack}: 
           </>}
           <div style={{marginTop:10,paddingTop:10,borderTop:`1px solid ${C.border}`,color:C.mid,fontSize:12}}>
             {day===2?'Each hole: 0–2 points available per team (best ball + aggregate)'
+              :day===3?'Win = 2 pts · Halved = 1 pt each · Loss = 0 pts'
               :'Win = 1 pt · Halved = ½ pt each · Loss = 0 pts'}
           </div>
         </div>
@@ -1078,6 +1094,91 @@ function Scorecard({day,pid,players,course,scores,onBack}: {
 }
 
 // ── Leaderboard ───────────────────────────────────────────
+// ── All-time player leaderboard ──────────────────────────
+function AllTimeLeaderboard({players,pairings,courses,scores,overrides}: {
+  players:Player[]; pairings:Pairing[]; courses:Course[];
+  scores:Record<string,(number|null)[]>; overrides:MatchOverride[];
+}) {
+  const nameOf=(pid:string)=>players.find(p=>p.id===pid)?.name||pid;
+  const pts:Record<string,{d1:number;d2:number;d3:number}>={};
+  players.forEach(p=>{pts[p.id]={d1:0,d2:0,d3:0};});
+
+  const getMatchPts2=(matchId:string,day:number,match:Pairing,course:Course)=>{
+    const ov=overrides.find(o=>o.matchId===matchId);
+    if(ov){const w=day===3?2:1,h=day===3?1:0.5;return ov.result==='A'?{A:w,B:0}:ov.result==='B'?{A:0,B:w}:{A:h,B:h};}
+    const res=getResults(day,match,players,course,scores);
+    return matchPts(matchStat(res),day);
+  };
+
+  const c1=courses.find(c=>c.day===1);
+  if(c1) pairings.filter(m=>m.day===1).forEach(m=>{
+    if(!m.teamA?.[0]||!m.teamB?.[0]) return;
+    const p=getMatchPts2(m.id,1,m,c1);
+    [m.teamA[0],m.teamA[1]].forEach(pid=>{if(pid&&pts[pid])pts[pid].d1+=p.A;});
+    [m.teamB[0],m.teamB[1]].forEach(pid=>{if(pid&&pts[pid])pts[pid].d1+=p.B;});
+  });
+  const c2=courses.find(c=>c.day===2);
+  if(c2) pairings.filter(m=>m.day===2).forEach(m=>{
+    if(!m.teamA?.[0]||!m.teamB?.[0]) return;
+    const p=getMatchPts2(m.id,2,m,c2);
+    [m.teamA[0],m.teamA[1]].forEach(pid=>{if(pid&&pts[pid])pts[pid].d2+=p.A;});
+    [m.teamB[0],m.teamB[1]].forEach(pid=>{if(pid&&pts[pid])pts[pid].d2+=p.B;});
+  });
+  const c3=courses.find(c=>c.day===3);
+  if(c3) pairings.filter(m=>m.day===3).forEach(m=>{
+    if(!m.playerA||!m.playerB) return;
+    const p=getMatchPts2(m.id,3,m,c3);
+    if(pts[m.playerA])pts[m.playerA].d3+=p.A;
+    if(pts[m.playerB])pts[m.playerB].d3+=p.B;
+  });
+
+  const rows=players.filter(p=>p.name).map(p=>({
+    pid:p.id,name:p.name,teamId:p.teamId,
+    d1:pts[p.id]?.d1||0,d2:pts[p.id]?.d2||0,d3:pts[p.id]?.d3||0,
+    total:(pts[p.id]?.d1||0)+(pts[p.id]?.d2||0)+(pts[p.id]?.d3||0),
+  })).sort((a,b)=>b.total-a.total||a.name.localeCompare(b.name));
+
+  if(rows.length===0) return null;
+  const hd:React.CSSProperties={fontSize:10,fontWeight:700,color:'#9CA3AF',textAlign:'center',padding:'0 4px'};
+  const cd:React.CSSProperties={fontSize:13,fontWeight:600,textAlign:'center',padding:'8px 4px'};
+  return (
+    <div style={{...card,padding:0,overflow:'hidden',marginBottom:'1rem'}}>
+      <div style={{background:C.dark,padding:'10px 14px'}}>
+        <div style={{fontSize:11,fontWeight:700,color:C.gold,letterSpacing:'0.08em'}}>PLAYER POINTS TABLE · 2026</div>
+      </div>
+      <table style={{width:'100%',borderCollapse:'collapse'}}>
+        <thead>
+          <tr style={{background:'#F9FAFB',borderBottom:`2px solid ${C.border}`}}>
+            <th style={{...hd,textAlign:'left',padding:'8px 12px',width:'40%'}}>Player</th>
+            <th style={hd}>Scramble</th>
+            <th style={hd}>Best Ball</th>
+            <th style={hd}>Singles</th>
+            <th style={{...hd,color:C.dark}}>Total</th>
+          </tr>
+        </thead>
+        <tbody>
+          {rows.map((row,i)=>{
+            const acc=row.teamId==='A'?C.pakGreen:C.engNavy;
+            return (
+              <tr key={row.pid} style={{background:i%2===0?C.white:'#F9FAFB',borderBottom:`1px solid ${C.border}`}}>
+                <td style={{padding:'8px 12px'}}>
+                  <div style={{fontSize:13,fontWeight:600,color:C.dark}}>{row.name}</div>
+                  <div style={{marginTop:2}}><TeamPill tid={row.teamId}/></div>
+                </td>
+                <td style={{...cd,color:row.d1>0?acc:C.mid}}>{fmtPt(row.d1)}</td>
+                <td style={{...cd,color:row.d2>0?acc:C.mid}}>{fmtPt(row.d2)}</td>
+                <td style={{...cd,color:row.d3>0?acc:C.mid}}>{fmtPt(row.d3)}</td>
+                <td style={{...cd,fontSize:15,fontWeight:800,color:row.total>0?acc:C.mid}}>{fmtPt(row.total)}</td>
+              </tr>
+            );
+          })}
+        </tbody>
+      </table>
+    </div>
+  );
+}
+
+
 function Leaderboard({players,courses,pairings,scores,lockedDays,overrides,onToggleLock,onSaveOverride,onEndTournament}: {
   players:Player[]; courses:Course[]; pairings:Pairing[];
   scores:Record<string,(number|null)[]>;
@@ -1115,13 +1216,14 @@ function Leaderboard({players,courses,pairings,scores,lockedDays,overrides,onTog
   const getEffectiveResult=(matchId:string,day:number,match:Pairing,course:Course)=>{
     const ov=overrides.find(o=>o.matchId===matchId);
     if(ov){
+      const ovWin=day===3?2:1, ovHalf=day===3?1:0.5;
       return{stat:{sc:ov.result==='A'?1:ov.result==='B'?-1:0,pl:18,closed:false,rem:0} as MatchStat,
-        pts:ov.result==='A'?{A:1,B:0}:ov.result==='B'?{A:0,B:1}:{A:0.5,B:0.5},
+        pts:ov.result==='A'?{A:ovWin,B:0}:ov.result==='B'?{A:0,B:ovWin}:{A:ovHalf,B:ovHalf},
         isOverride:true, overrideResult:ov.result};
     }
     const res=getResults(day,match,players,course,scores);
     const stat=matchStat(res);
-    return{stat,pts:matchPts(stat),isOverride:false,overrideResult:null as string|null};
+    return{stat,pts:matchPts(stat,day),isOverride:false,overrideResult:null as string|null};
   };
   const nameOf=(pid:string)=>players.find(p=>p.id===pid)?.name||'?';
   const dayPts=(day:number)=>{
@@ -1133,6 +1235,8 @@ function Leaderboard({players,courses,pairings,scores,lockedDays,overrides,onTog
     });
     return{A:a,B:b};
   };
+  // Day 3 max points = 10 matches × 2pts = 20; Days 1&2 = 10 each
+  const maxPts=(day:number)=>day===3?20:10;
   const d:{[k:number]:{A:number;B:number}}={1:dayPts(1),2:dayPts(2),3:dayPts(3)};
   const totA=d[1].A+d[2].A+d[3].A, totB=d[1].B+d[2].B+d[3].B;
   const lead=totA>totB?'A':totB>totA?'B':null;
@@ -1141,7 +1245,7 @@ function Leaderboard({players,courses,pairings,scores,lockedDays,overrides,onTog
     <div>
       {/* Overall scoreboard */}
       <div style={{background:C.dark,borderRadius:16,padding:'1.5rem',marginBottom:'1rem'}}>
-        <div style={{fontSize:10,color:C.gold,fontWeight:700,letterSpacing:'0.12em',marginBottom:16,textAlign:'center'}}>JINNAH-ATTLEE SHIELD · 20 POINTS</div>
+        <div style={{fontSize:10,color:C.gold,fontWeight:700,letterSpacing:'0.12em',marginBottom:16,textAlign:'center'}}>JINNAH-ATTLEE SHIELD · 40 POINTS</div>
         {/* One-line score: Pakistan X – England X */}
         <div style={{display:'flex',alignItems:'center',justifyContent:'center',gap:10,marginBottom:12,flexWrap:'wrap'}}>
           <span style={{fontSize:20,fontWeight:800,color:'#4ADE80'}}>{TNAME.A}</span>
@@ -1225,6 +1329,9 @@ function Leaderboard({players,courses,pairings,scores,lockedDays,overrides,onTog
           </div>
         );
       })}
+
+      {/* Player points table */}
+      <AllTimeLeaderboard players={players} pairings={pairings} courses={courses} scores={scores} overrides={overrides}/>
 
       {/* End tournament */}
       <div style={{marginTop:'1rem',paddingTop:'1rem',borderTop:`1px solid ${C.border}`}}>
@@ -1651,7 +1758,7 @@ function EndTournamentModal({year,players,courses,pairings,scores,onClose,onComp
   const dayPts=(day:number)=>{
     let a=0,b=0;
     const course=courses.find(c=>c.day===day)!;
-    pairings.filter(m=>m.day===day).forEach(m=>{const res=getResults(day,m,players,course,scores);const pts=matchPts(matchStat(res));a+=pts.A;b+=pts.B;});
+    pairings.filter(m=>m.day===day).forEach(m=>{const res=getResults(day,m,players,course,scores);const pts=matchPts(matchStat(res),day);a+=pts.A;b+=pts.B;});
     return{A:a,B:b};
   };
   const d={1:dayPts(1),2:dayPts(2),3:dayPts(3)};
@@ -1665,7 +1772,7 @@ function EndTournamentModal({year,players,courses,pairings,scores,onClose,onComp
       const paired=day<3?!!(m.teamA?.[0]&&m.teamB?.[0]):!!(m.playerA&&m.playerB);
       if(!paired) return;
       const res=getResults(day,m,players,course,scores);
-      const s=matchStat(res); const pts=matchPts(s);
+      const s=matchStat(res); const pts=matchPts(s,day);
       const lA=day<3?`${nameOf(m.teamA[0])} & ${nameOf(m.teamA[1])}`:nameOf(m.playerA);
       const lB=day<3?`${nameOf(m.teamB[0])} & ${nameOf(m.teamB[1])}`:nameOf(m.playerB);
       matchRecords.push({day,labelA:lA,labelB:lB,result:s.pl===0?'—':statLabel(s),ptsA:pts.A,ptsB:pts.B});
@@ -1910,17 +2017,17 @@ export default function App() {
   const fetchJson=async(url:string)=>{const r=await fetch(url);if(!r.ok)throw new Error(`${url} → ${r.status}`);return r.json();};
 
   const loadYear=async(year:number)=>{
-    const [pl,co,pa,sc,lk,ov]=await Promise.all([
+    const [pl,co,pa,sc,lk]=await Promise.all([
       fetchJson(`/api/players?year=${year}`),
       fetchJson(`/api/courses?year=${year}`),
       fetchJson(`/api/pairings?year=${year}`),
       fetchJson(`/api/scores?year=${year}`),
       fetchJson(`/api/lock?year=${year}`),
-      fetchJson(`/api/override?year=${year}`),
     ]);
     setPlayers(pl); setCourses(co); setPairings(pa); setScores(sc);
     setLockedDays(lk.lockedDays||[]);
-    setOverrides(ov||[]);
+    // Load overrides separately — fault tolerant
+    try { const ov=await fetchJson(`/api/override?year=${year}`); setOverrides(ov||[]); } catch { setOverrides([]); }
     setSetupDone(pl.some((p:Player)=>p.name!==''));
     setReady(true);
   };
@@ -2077,13 +2184,13 @@ export default function App() {
           let a=0,b=0,hp=0;
           pairings.filter(m=>m.day===d).forEach(m=>{
             const res=getResults(d,m,players,course,scores);
-            const pts2=matchPts(matchStat(res));a+=pts2.A;b+=pts2.B;
+            const pts2=matchPts(matchStat(res),d);a+=pts2.A;b+=pts2.B;
             const played=res.filter(r=>r!=null).length; if(played>hp)hp=played;
           });
           return{A:a,B:b,holesPlayed:hp};
         })():null}
         onStartYear={startYear} onSwitchYear={switchYear} onSetup={()=>setNav('setup')} onPlay={()=>{setActiveDay(1);setNav('today');}}/>}
-        {nav==='today'&&setupDone&&<Today day={activeDay} players={players} courses={courses} pairings={pairings} scores={scores} lockedDays={lockedDays} onSelectMatch={mid=>!lockedDays.includes(activeDay)&&setScoringMatch({day:activeDay,mid})} onSelectCard={pid=>setScoringCard({day:activeDay,pid})}/>}
+        {nav==='today'&&setupDone&&<Today day={activeDay} players={players} courses={courses} pairings={pairings} scores={scores} lockedDays={lockedDays} overrides={overrides} onSelectMatch={mid=>!lockedDays.includes(activeDay)&&setScoringMatch({day:activeDay,mid})} onSelectCard={pid=>setScoringCard({day:activeDay,pid})}/>}
         {nav==='scores'&&setupDone&&<Leaderboard players={players} courses={courses} pairings={pairings} scores={scores} lockedDays={lockedDays} overrides={overrides} onToggleLock={toggleLockDay} onSaveOverride={saveOverride} onEndTournament={()=>setShowEndModal(true)}/>}
         {nav==='d4'&&setupDone&&<Day4View players={players} courses={courses} scores={scores} onSave={saveScore}/>}
         {nav==='more'&&<More activeYear={activeYear} allYears={allYears} players={players} courses={courses} pairings={pairings} setPairings={setPairings} scores={scores} setupDone={setupDone} onSetup={()=>setNav('setup')} onStartYear={startYear} onSwitchYear={switchYear} onEndTournament={()=>setShowEndModal(true)} onSaveMatches={savePairings} savingPairings={savingPairings}/>}
